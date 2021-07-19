@@ -4,7 +4,7 @@ const http = require('http');
 const cors = require('cors');
 
 const router = require('./routers/router');
-const { addUser, removeUser } = require('./controllers/users');
+const { addUser, removeUser, getUser, getUsersInRoom } = require('./controllers/users');
 const { callbackify } = require('util');
 
 const app = express();
@@ -17,7 +17,7 @@ app.use('/', router);
 
 //Will run when we have a client connection on io instance
 io.on('connection', (socket /*A client instance of a socket*/) => {
-    socket.on('join', ({ name, room }) => {
+    socket.on('join', ({ name, room }, callback) => {
         const { error, user } = addUser(socket.id, name, room);
 
         if (error) {
@@ -38,6 +38,12 @@ io.on('connection', (socket /*A client instance of a socket*/) => {
                 message: `${user.name} has joined`
             })
 
+        io.to(user.room).emit('roomData',
+            {
+                room: user.room,
+                users: getUsersInRoom(user.room)
+            })
+
         // Join a user in a room
         socket.join(user.room);
 
@@ -49,7 +55,7 @@ io.on('connection', (socket /*A client instance of a socket*/) => {
 
         io.to(user.room).emit('message',
             {
-                user: 'admin',
+                user: user.name,
                 message
             })
 
@@ -59,7 +65,20 @@ io.on('connection', (socket /*A client instance of a socket*/) => {
     // Juts this single socket not the whole io
     // Socket is just a speciific socket that just joined (A single user)
     socket.on('disconnect', () => {
-        console.log('User has left')
+        const user = removeUser(socket.id);
+
+        if (user) {
+            io.to(user.room).emit('message', {
+                user: 'admin',
+                message: `${user.name} has left`
+            })
+
+            io.to(user.room).emit('roomData',
+                {
+                    room: user.room,
+                    users: getUsersInRoom(user.room)
+                })
+        }
     })
 })
 
